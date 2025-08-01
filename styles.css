@@ -76,8 +76,16 @@ header {
     opacity: 0.9;
 }
 
+.button-group {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+}
+
 .cta-button {
-    background: #ff6b6b;
+    background: #667eea;
     color: white;
     border: none;
     padding: 1rem 2rem;
@@ -89,9 +97,27 @@ header {
 }
 
 .cta-button:hover {
-    background: #ff5252;
+    background: #5a6fd8;
     transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.new-crawl-button {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 600;
+}
+
+.new-crawl-button:hover {
+    background: #5a6fd8;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
 }
 
 /* Content Sections */

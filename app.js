@@ -13,6 +13,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add fade-in animations to sections
     setupScrollAnimations();
     
+    // Setup automatic page estimation when URL is entered
+    setupAutoEstimation();
+    
     
 });
 
@@ -25,11 +28,95 @@ function showCrawlerSection() {
     });
 }
 
+// New crawl - clear all data and reset interface
+function newCrawl() {
+    console.log('🆕 Starting new crawl - clearing all data');
+    
+    // Clear form fields
+    document.getElementById('crawlUrl').value = '';
+    document.getElementById('maxDepth').value = '3';
+    document.getElementById('downloadDir').value = './downloads';
+    
+    // Clear adjusted max pages if it exists
+    const adjustedMaxPagesField = document.getElementById('adjustedMaxPages');
+    if (adjustedMaxPagesField) {
+        adjustedMaxPagesField.value = '';
+    }
+    document.getElementById('respectRobots').checked = true;
+    document.getElementById('stayOnDomain').checked = true;
+    
+    // Clear all file type checkboxes
+    const fileTypeCheckboxes = document.querySelectorAll('input[name="fileTypes"]');
+    fileTypeCheckboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    // Hide and clear crawl status
+    const statusSection = document.getElementById('crawlStatus');
+    if (statusSection) {
+        statusSection.style.display = 'none';
+    }
+    
+    // Clear results sections
+    const resultsSection = document.getElementById('resultsSection');
+    if (resultsSection) {
+        resultsSection.style.display = 'none';
+    }
+    
+    // Hide estimation results
+    const estimationSection = document.getElementById('estimationResults');
+    if (estimationSection) {
+        estimationSection.style.display = 'none';
+    }
+    
+    // Clear current crawl data
+    currentCrawlId = null;
+    
+    // Stop any running status checks
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = null;
+    }
+    
+    // Clear any displayed results data
+    const progressBar = document.querySelector('.progress-bar');
+    if (progressBar) {
+        progressBar.style.width = '0%';
+    }
+    
+    const progressText = document.querySelector('.progress-text');
+    if (progressText) {
+        progressText.textContent = '';
+    }
+    
+    // Clear status details
+    const statusDetails = document.querySelector('.status-details');
+    if (statusDetails) {
+        statusDetails.innerHTML = '';
+    }
+    
+    // Reset buttons to initial state
+    const startButton = document.querySelector('.cta-button');
+    if (startButton) {
+        startButton.textContent = 'Start Crawl';
+        startButton.disabled = false;
+    }
+    
+    console.log('✅ New crawl interface reset completed');
+    
+    // Show success message briefly
+    showNotification('🆕 Ready for new crawl! All data cleared.', 'success');
+}
+
 // Start crawl
 async function startCrawl() {
     const url = document.getElementById('crawlUrl').value.trim();
     const maxDepth = parseInt(document.getElementById('maxDepth').value) || 3;
-    const maxPages = parseInt(document.getElementById('maxPages').value) || 1000;
+    // Get maxPages from adjusted field if available, otherwise use default
+    const adjustedMaxPagesField = document.getElementById('adjustedMaxPages');
+    const maxPages = adjustedMaxPagesField && adjustedMaxPagesField.value 
+        ? parseInt(adjustedMaxPagesField.value) 
+        : 1000;
     const downloadDir = document.getElementById('downloadDir').value.trim();
     const respectRobots = document.getElementById('respectRobots').checked;
     const stayOnDomain = document.getElementById('stayOnDomain').checked;
@@ -1049,6 +1136,39 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { utils, displayMessage, isValidEmail, isValidUrl };
 }
 
+// Setup automatic page estimation when URL is entered
+function setupAutoEstimation() {
+    const urlInput = document.getElementById('crawlUrl');
+    let estimationTimeout = null;
+    
+    if (urlInput) {
+        urlInput.addEventListener('input', function() {
+            const url = this.value.trim();
+            
+            // Clear previous timeout
+            if (estimationTimeout) {
+                clearTimeout(estimationTimeout);
+            }
+            
+            // Only estimate if URL looks valid and is not empty
+            if (url && isValidUrl(url)) {
+                // Debounce the estimation call by 1 second to avoid rapid requests
+                estimationTimeout = setTimeout(() => {
+                    console.log('🔍 Auto-triggering page estimation for:', url);
+                    estimatePages();
+                }, 1000);
+            } else {
+                // Hide estimation results if URL becomes invalid
+                const estimationResults = document.getElementById('estimationResults');
+                if (estimationResults) {
+                    estimationResults.style.display = 'none';
+                }
+                lastEstimation = null;
+            }
+        });
+    }
+}
+
 // Page Estimation Functions
 let lastEstimation = null;
 
@@ -1056,7 +1176,11 @@ let lastEstimation = null;
 async function estimatePages() {
     const url = document.getElementById('crawlUrl').value.trim();
     const maxDepth = parseInt(document.getElementById('maxDepth').value) || 3;
-    const currentMaxPages = parseInt(document.getElementById('maxPages').value) || 1000;
+    // Get current max pages from adjusted field if available, otherwise use default
+    const adjustedMaxPagesField = document.getElementById('adjustedMaxPages');
+    const currentMaxPages = adjustedMaxPagesField && adjustedMaxPagesField.value 
+        ? parseInt(adjustedMaxPagesField.value) 
+        : 1000;
     
     if (!url) {
         displayMessage('Please enter a URL first', 'error');
@@ -1100,9 +1224,12 @@ async function estimatePages() {
         lastEstimation = data.estimation;
         displayEstimationResults(data.estimation);
         
-        // Auto-update max pages with suggestion
+        // Auto-update max pages with suggestion in the adjustment field
         if (data.estimation.autoAdjusted) {
-            document.getElementById('maxPages').value = data.estimation.suggestedMaxPages;
+            const adjustedMaxPagesField = document.getElementById('adjustedMaxPages');
+            if (adjustedMaxPagesField) {
+                adjustedMaxPagesField.value = data.estimation.suggestedMaxPages;
+            }
             displayMessage(`Max pages auto-adjusted to ${data.estimation.suggestedMaxPages}`, 'info');
         }
         
@@ -1197,8 +1324,11 @@ async function adjustMaxPages() {
             throw new Error(data.error || 'Failed to adjust limit');
         }
         
-        // Update the main max pages input
-        document.getElementById('maxPages').value = data.adjustedLimit;
+        // Update the adjusted max pages input
+        const adjustedMaxPagesField = document.getElementById('adjustedMaxPages');
+        if (adjustedMaxPagesField) {
+            adjustedMaxPagesField.value = data.adjustedLimit;
+        }
         
         // Show adjustment info
         const adjustmentInfo = document.getElementById('adjustmentInfo');
@@ -1220,6 +1350,65 @@ async function adjustMaxPages() {
         console.error('Error adjusting limit:', error);
         displayMessage(`Error adjusting limit: ${error.message}`, 'error');
     }
+}
+
+// Show notification message
+function showNotification(message, type = 'info', duration = 3000) {
+    // Remove existing notifications
+    const existingNotifications = document.querySelectorAll('.notification');
+    existingNotifications.forEach(notification => notification.remove());
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // Style the notification
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 8px;
+        color: white;
+        font-weight: 600;
+        z-index: 10000;
+        opacity: 0;
+        transform: translateX(100px);
+        transition: all 0.3s ease;
+        max-width: 300px;
+        word-wrap: break-word;
+    `;
+    
+    // Set background color based on type
+    const colors = {
+        'success': '#28a745',
+        'error': '#dc3545',
+        'warning': '#ffc107',
+        'info': '#17a2b8'
+    };
+    
+    notification.style.background = colors[type] || colors['info'];
+    
+    // Add to document
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateX(0)';
+    }, 10);
+    
+    // Remove after duration
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100px)';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, duration);
 }
 
 console.log('🧽 Sponge Crawler web interface scripts loaded');

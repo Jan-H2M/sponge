@@ -439,7 +439,7 @@ class DocumentDownloader {
         const urlObj = new URL(url);
         
         if (this.config.flatFileStructure) {
-            // Truly flat structure - directly in outputDir with conflict resolution
+            // Truly flat structure - all files directly in outputDir with conflict resolution
             const domain = urlObj.hostname.replace(/[^a-zA-Z0-9.-]/g, '_');
             const prefixedFilename = `${domain}_${filename}`;
             return this.getFlatOutputPath(this.config.outputDir, prefixedFilename, urlObj.hostname);

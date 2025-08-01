@@ -179,6 +179,7 @@ class SpongeWebServer {
                 const crawlConfig = await configManager.loadConfig({
                     startUrl: url,
                     flatFileStructure: true, // Use flat structure for web interface downloads
+                    createMirrorStructure: false, // Disable mirror structure when using flat structure
                     ...processedConfig
                 });
                 
@@ -430,6 +431,42 @@ class SpongeWebServer {
             });
         });
 
+        // Manual cleanup endpoint
+        this.app.post('/api/crawl/:id/cleanup', async (req, res) => {
+            try {
+                const crawlId = req.params.id;
+                const crawl = this.activeCrawls.get(crawlId);
+                
+                if (!crawl) {
+                    return res.status(404).json({ error: 'Crawl not found' });
+                }
+
+                if (crawl.status === 'running') {
+                    return res.status(400).json({ error: 'Cannot cleanup running crawl' });
+                }
+
+                if (crawl.cleanedUp) {
+                    return res.status(200).json({ 
+                        success: true, 
+                        message: 'Crawl already cleaned up',
+                        cleanupTime: crawl.cleanupTime
+                    });
+                }
+
+                await this.cleanupCrawlDirectory(crawlId, crawl.config.outputDir);
+
+                res.json({
+                    success: true,
+                    message: 'Crawl directory cleaned up successfully',
+                    crawlId
+                });
+
+            } catch (error) {
+                this.logger.error('Error during manual cleanup:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+
         // Download all documents as ZIP
         this.app.get('/api/crawl/:id/download-all-zip', async (req, res) => {
             try {
@@ -501,6 +538,11 @@ class SpongeWebServer {
                 
                 archive.append(JSON.stringify(metadata, null, 2), { name: 'crawl-metadata.json' });
                 
+                // Clean up directory after successful download
+                archive.on('end', () => {
+                    this.cleanupCrawlDirectory(crawlId, crawl.config.outputDir);
+                });
+                
                 archive.finalize();
 
             } catch (error) {
@@ -520,25 +562,36 @@ class SpongeWebServer {
                 }
 
                 const outputDir = crawl.config.outputDir;
+                
+                // Check for page content files - they could be in a pages subdirectory or directly in outputDir
+                let pageFiles = [];
+                let sourceDir = outputDir;
+                
+                // First try pages subdirectory (legacy structure)
                 const pagesDir = path.join(outputDir, 'pages');
-                
-                if (!await fs.pathExists(pagesDir)) {
-                    return res.status(404).json({ error: 'No page content files found' });
-                }
-                
-                // Check if there are any files in pages directory
-                const pageFiles = await fs.readdir(pagesDir, { recursive: true });
-                const actualFiles = [];
-                
-                for (const file of pageFiles) {
-                    const filePath = path.join(pagesDir, file);
-                    const stat = await fs.stat(filePath);
-                    if (stat.isFile()) {
-                        actualFiles.push(file);
+                if (await fs.pathExists(pagesDir)) {
+                    sourceDir = pagesDir;
+                    const files = await fs.readdir(pagesDir, { recursive: true });
+                    for (const file of files) {
+                        const filePath = path.join(pagesDir, file);
+                        const stat = await fs.stat(filePath);
+                        if (stat.isFile() && (file.endsWith('.md') || file.endsWith('.txt') || file.endsWith('.html'))) {
+                            pageFiles.push(file);
+                        }
+                    }
+                } else {
+                    // Check for page content files directly in output directory (flat structure)
+                    const files = await fs.readdir(outputDir);
+                    for (const file of files) {
+                        const filePath = path.join(outputDir, file);
+                        const stat = await fs.stat(filePath);
+                        if (stat.isFile() && (file.endsWith('.md') || file.endsWith('.txt') || file.endsWith('.html'))) {
+                            pageFiles.push(file);
+                        }
                     }
                 }
                 
-                if (actualFiles.length === 0) {
+                if (pageFiles.length === 0) {
                     return res.status(404).json({ error: 'No page content files found' });
                 }
 
@@ -549,8 +602,16 @@ class SpongeWebServer {
                 res.attachment(`sponge-pages-${crawlId}.zip`);
                 archive.pipe(res);
                 
-                // Add all files from the pages directory
-                archive.directory(pagesDir, 'pages');
+                // Add page content files to the archive
+                for (const file of pageFiles) {
+                    const filePath = path.join(sourceDir, file);
+                    archive.file(filePath, { name: file });
+                }
+                
+                // Clean up directory after successful download
+                archive.on('end', () => {
+                    this.cleanupCrawlDirectory(crawlId, crawl.config.outputDir);
+                });
                 
                 archive.finalize();
 
@@ -583,6 +644,11 @@ class SpongeWebServer {
                     
                     // Add all files from the output directory
                     archive.directory(outputDir, false);
+                    
+                    // Clean up directory after successful download
+                    archive.on('end', () => {
+                        this.cleanupCrawlDirectory(crawlId, crawl.config.outputDir);
+                    });
                     
                     archive.finalize();
                 } else {
@@ -855,12 +921,41 @@ class SpongeWebServer {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
+    /**
+     * Clean up crawl output directory after download
+     */
+    async cleanupCrawlDirectory(crawlId, outputDir) {
+        try {
+            this.logger.info(`🧹 Cleaning up crawl directory: ${outputDir}`);
+            
+            // Remove all files and subdirectories in the output directory
+            await fs.emptyDir(outputDir);
+            
+            // Remove the output directory itself if it's not the default downloads folder
+            if (outputDir !== './downloads' && !outputDir.endsWith('/downloads')) {
+                await fs.remove(outputDir);
+                this.logger.info(`🗑️ Removed output directory: ${outputDir}`);
+            }
+            
+            // Mark crawl for cleanup from memory
+            const crawl = this.activeCrawls.get(crawlId);
+            if (crawl) {
+                crawl.cleanedUp = true;
+                crawl.cleanupTime = new Date();
+            }
+            
+            this.logger.info(`✅ Cleanup completed for crawl: ${crawlId}`);
+            
+        } catch (error) {
+            this.logger.error(`❌ Failed to cleanup crawl directory ${outputDir}:`, error);
+        }
+    }
+
     start() {
         return new Promise((resolve, reject) => {
             this.server = this.app.listen(this.port, '0.0.0.0', () => {
-                this.logger.info(`🧽 Sponge Web Interface running on http://localhost:${this.port}`);
-                this.logger.info(`📊 API endpoints available at http://localhost:${this.port}/api`);
-                this.logger.info(`🌐 Also accessible at http://127.0.0.1:${this.port}`);
+                this.logger.info(`🧽 Sponge Web Interface running on http://127.0.0.1:${this.port}`);
+                this.logger.info(`📊 API endpoints available at http://127.0.0.1:${this.port}/api`);
                 resolve(this.server);
             });
             

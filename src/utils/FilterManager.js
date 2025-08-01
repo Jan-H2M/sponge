@@ -101,6 +101,11 @@ class FilterManager {
      * Check if URL points to a document
      */
     isDocumentUrl(url) {
+        // If no file types are allowed, don't treat anything as a document
+        if (this.documentExtensions.size === 0) {
+            return false;
+        }
+        
         try {
             const urlObj = new URL(url);
             const pathname = urlObj.pathname.toLowerCase();
@@ -111,15 +116,28 @@ class FilterManager {
                 return true;
             }
             
-            // Check for common document patterns in URL
-            const documentPatterns = [
-                /\/(download|file|document|attachment)\//i,
-                /[\?&](file|download|attachment)=/i,
-                /\.pdf[\?#]?/i,
-                /\.docx?[\?#]?/i,
-                /\.xlsx?[\?#]?/i,
-                /\.pptx?[\?#]?/i
-            ];
+            // Only check document patterns if the extensions match our allowed types
+            const documentPatterns = [];
+            if (this.documentExtensions.has('pdf')) {
+                documentPatterns.push(/\.pdf[\?#]?/i);
+            }
+            if (this.documentExtensions.has('doc') || this.documentExtensions.has('docx')) {
+                documentPatterns.push(/\.docx?[\?#]?/i);
+            }
+            if (this.documentExtensions.has('xls') || this.documentExtensions.has('xlsx')) {
+                documentPatterns.push(/\.xlsx?[\?#]?/i);
+            }
+            if (this.documentExtensions.has('ppt') || this.documentExtensions.has('pptx')) {
+                documentPatterns.push(/\.pptx?[\?#]?/i);
+            }
+            
+            // Only check download patterns if we have any allowed document types
+            if (this.documentExtensions.size > 0) {
+                documentPatterns.push(
+                    /\/(download|file|document|attachment)\//i,
+                    /[\?&](file|download|attachment)=/i
+                );
+            }
             
             return documentPatterns.some(pattern => pattern.test(url));
         } catch (error) {
@@ -131,12 +149,72 @@ class FilterManager {
      * Check if content type indicates a document
      */
     isDocumentType(url, contentType) {
+        // If no file types are allowed, don't treat anything as a document
+        if (this.documentExtensions.size === 0) {
+            return false;
+        }
+        
         if (!contentType) {
             return this.isDocumentUrl(url);
         }
         
         const mimeType = contentType.split(';')[0].trim().toLowerCase();
-        return this.documentMimeTypes.has(mimeType);
+        
+        // Only check MIME types for allowed file extensions
+        const allowedMimeTypes = new Set();
+        
+        if (this.documentExtensions.has('pdf')) {
+            allowedMimeTypes.add('application/pdf');
+        }
+        if (this.documentExtensions.has('doc')) {
+            allowedMimeTypes.add('application/msword');
+        }
+        if (this.documentExtensions.has('docx')) {
+            allowedMimeTypes.add('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        }
+        if (this.documentExtensions.has('xls')) {
+            allowedMimeTypes.add('application/vnd.ms-excel');
+        }
+        if (this.documentExtensions.has('xlsx')) {
+            allowedMimeTypes.add('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        }
+        if (this.documentExtensions.has('ppt')) {
+            allowedMimeTypes.add('application/vnd.ms-powerpoint');
+        }
+        if (this.documentExtensions.has('pptx')) {
+            allowedMimeTypes.add('application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        }
+        if (this.documentExtensions.has('txt')) {
+            allowedMimeTypes.add('text/plain');
+        }
+        if (this.documentExtensions.has('csv')) {
+            allowedMimeTypes.add('text/csv');
+        }
+        if (this.documentExtensions.has('json')) {
+            allowedMimeTypes.add('application/json');
+        }
+        if (this.documentExtensions.has('xml')) {
+            allowedMimeTypes.add('application/xml');
+            allowedMimeTypes.add('text/xml');
+        }
+        if (this.documentExtensions.has('jpg') || this.documentExtensions.has('jpeg')) {
+            allowedMimeTypes.add('image/jpeg');
+            allowedMimeTypes.add('image/jpg');
+        }
+        if (this.documentExtensions.has('png')) {
+            allowedMimeTypes.add('image/png');
+        }
+        if (this.documentExtensions.has('gif')) {
+            allowedMimeTypes.add('image/gif');
+        }
+        if (this.documentExtensions.has('webp')) {
+            allowedMimeTypes.add('image/webp');
+        }
+        if (this.documentExtensions.has('svg')) {
+            allowedMimeTypes.add('image/svg+xml');
+        }
+        
+        return allowedMimeTypes.has(mimeType);
     }
 
     /**

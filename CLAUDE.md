@@ -13,10 +13,10 @@ This is **Sponge Crawler** - a Node.js-based web crawler and document downloader
 # Install dependencies
 npm install
 
-# Start main application (uses src/index.js)
+# Start web interface (primary entry point) on http://127.0.0.1:3000
 npm start
 
-# Start web interface on http://localhost:3000
+# Alternative web interface commands
 npm run web
 
 # Web server management (background processes)
@@ -69,18 +69,19 @@ npx sponge schedule "0 2 * * *" https://example.com --name daily-crawl
 ### Core Components
 - **SpongeCrawler** (`src/crawler/SpongeCrawler.js`) - Main orchestration class that coordinates all crawling activities
 - **UrlQueue** (`src/crawler/UrlQueue.js`) - Manages URL discovery and queuing with deduplication
-- **DocumentDownloader** (`src/downloader/DocumentDownloader.js`) - Handles file detection and downloading
+- **DocumentDownloader** (`src/downloader/DocumentDownloader.js`) - Handles file detection, downloading, and flat file structure management
+- **PageEstimator** (`src/crawler/PageEstimator.js`) - Pre-crawl page estimation via sitemap analysis and pagination detection
 - **AuthManager** (`src/auth/AuthManager.js`) - Supports basic auth, bearer tokens, and cookie-based authentication
 - **RobotsChecker** (`src/crawler/RobotsChecker.js`) - Respects robots.txt rules and crawl delays
-- **ConfigManager** (`src/config/ConfigManager.js`) - Loads and validates configuration from files or CLI options
-- **FilterManager** (`src/utils/FilterManager.js`) - Applies filtering rules for file types, sizes, and URL patterns
+- **ConfigManager** (`src/config/ConfigManager.js`) - Hierarchical configuration system with CLI/file/default merging
+- **FilterManager** (`src/utils/FilterManager.js`) - Smart filtering for file types, preventing unwanted downloads when not requested
 - **ExportManager** (`src/export/ExportManager.js`) - Handles result export in various formats
 - **ScheduleManager** (`src/scheduler/ScheduleManager.js`) - Manages cron-based scheduled crawling jobs
 
 ### Entry Points
 - **CLI**: `bin/sponge.js` - Full-featured command line interface with subcommands
 - **Programmatic**: `src/index.js` - Main entry point for direct usage
-- **Web Interface**: `src/web-server.js` - Express server providing REST API and web UI
+- **Web Interface**: `src/web-server.js` - Express server providing REST API and web UI (primary interface)
 
 ### Key Libraries
 - **axios** - HTTP client with configurable timeouts and auth
@@ -94,12 +95,15 @@ npx sponge schedule "0 2 * * *" https://example.com --name daily-crawl
 - **robots-parser** - Robots.txt parsing and compliance
 
 ### Configuration System
-The application uses a hierarchical configuration system:
-1. Default configuration in ConfigManager
-2. Config file (`sponge.config.json`)
-3. CLI options (highest priority)
+The application uses a hierarchical configuration system with intelligent merging:
+1. Default configuration in ConfigManager (includes sensible defaults)
+2. Config file (`sponge.config.json`) 
+3. CLI/API options (highest priority)
 
-Key configuration options include crawl depth, file types, authentication settings, rate limiting, and output formats.
+**Critical Configuration Logic:**
+- Web interface automatically sets `flatFileStructure: true` and `createMirrorStructure: false`
+- Empty `allowedFileTypes: []` prevents ALL document downloads (not fallback to defaults)
+- Page content saving is controlled separately via file type prefixes (e.g., "page-markdown")
 
 ### Authentication Support
 Supports multiple authentication methods:
@@ -114,15 +118,38 @@ Supports multiple authentication methods:
 - Designed for legitimate use cases like documentation archiving
 - Built-in safeguards against aggressive crawling
 
+## Critical Implementation Details
+
+### File Structure Management
+- **Flat File Structure**: Web interface enforces flat file structure where ALL files (documents + page content) are saved at the same level in the user-specified directory
+- **Conflict Resolution**: `getFlatOutputPath()` method handles filename conflicts using hostname prefixes and counters
+- **Automatic Cleanup**: Download endpoints automatically clean up crawl directories after ZIP download completion to prevent disk space bloat
+
+### Document Filtering Logic
+- **FilterManager**: `isDocumentUrl()` and `isDocumentType()` return `false` when `allowedFileTypes` is empty, preventing any document detection
+- **Page Content Separation**: Page content (HTML→text/markdown) is handled separately from document downloads
+- **Smart Type Detection**: File type selection in UI is processed into separate document types and page content formats
+
+### Web Server Architecture
+- **Network Binding**: Server binds to `127.0.0.1:3000` (not `0.0.0.0`) to avoid IPv6/IPv4 conflicts
+- **API-First Design**: Core functionality exposed via REST endpoints with web UI as consumer
+- **Memory Management**: Active crawls stored in-memory Map with automatic cleanup after 2 hours
+- **Graceful Error Handling**: Comprehensive error handling with structured logging
+
+### Page Estimation System
+- **Pre-Crawl Analysis**: `PageEstimator.js` analyzes sitemaps and pagination patterns before crawling
+- **Intelligent Limits**: Auto-adjusts `maxPages` based on discovered content patterns
+- **Confidence Scoring**: Provides confidence levels for page count estimates
+
 ## File Structure Notes
-- Test/output directories (`downloads/`, `final-test/`, etc.) contain crawl results and should not be modified directly
-- `logs/` directory contains crawler and error logs
+- Output directories are user-configurable and automatically cleaned after downloads
 - Web interface files (`index.html`, `app.js`, `styles.css`) provide the frontend UI
+- Server logs to `server.log` when run in background mode
 
 ## Web Interface Features
-- Real-time crawl progress with pagination detection
-- Smart page count estimation based on discovered content
-- Abort functionality to stop crawls while preserving results
-- ZIP download for bulk document retrieval
-- Directory browser for output path selection
-- Dual progress tracking (pagination vs total pages)
+- **Real-time Progress**: Live crawl progress with pagination detection and dual progress tracking
+- **Page Estimation**: Pre-crawl analysis with intelligent page count suggestions
+- **Flat File Downloads**: All content organized in single directory structure
+- **Automatic Cleanup**: Downloaded content automatically cleaned from server after ZIP download
+- **Abort Functionality**: Stop crawls while preserving results
+- **Directory Browser**: File system navigation for output path selection
