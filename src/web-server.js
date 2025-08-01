@@ -19,12 +19,18 @@ class SpongeWebServer {
         
         this.setupMiddleware();
         this.setupRoutes();
+        this.setupCleanup();
     }
 
     setupMiddleware() {
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
-        this.app.use(express.static(path.join(__dirname, '../')));
+        
+        // Add request logging for debugging
+        this.app.use((req, res, next) => {
+            this.logger.debug(`${req.method} ${req.path}`);
+            next();
+        });
     }
 
     setupRoutes() {
@@ -781,13 +787,40 @@ class SpongeWebServer {
             });
         });
 
-        // 404 handler
+        // Serve static files AFTER all API routes
+        this.app.use(express.static(path.join(__dirname, '../'), {
+            index: false, // Don't serve index.html automatically
+            maxAge: '1h'  // Cache static files for 1 hour
+        }));
+        
+        // 404 handler - distinguishes between API and web requests
         this.app.use((req, res) => {
-            res.status(404).json({
-                error: 'Not found',
-                path: req.path
-            });
+            if (req.path.startsWith('/api/')) {
+                res.status(404).json({
+                    error: 'API endpoint not found',
+                    path: req.path
+                });
+            } else {
+                // For non-API requests, serve the index.html (SPA fallback)
+                res.sendFile(path.join(__dirname, '../index.html'));
+            }
         });
+    }
+
+    setupCleanup() {
+        // Clean up old crawls every 30 minutes
+        setInterval(() => {
+            const now = Date.now();
+            const maxAge = 2 * 60 * 60 * 1000; // 2 hours
+            
+            for (const [crawlId, crawl] of this.activeCrawls.entries()) {
+                const age = now - crawl.startTime.getTime();
+                if (age > maxAge && (crawl.status === 'completed' || crawl.status === 'failed' || crawl.status === 'aborted')) {
+                    this.logger.debug(`Cleaning up old crawl: ${crawlId}`);
+                    this.activeCrawls.delete(crawlId);
+                }
+            }
+        }, 30 * 60 * 1000); // Every 30 minutes
     }
 
     generateCrawlId() {
@@ -823,11 +856,30 @@ class SpongeWebServer {
     }
 
     start() {
-        return new Promise((resolve) => {
-            this.server = this.app.listen(this.port, () => {
+        return new Promise((resolve, reject) => {
+            this.server = this.app.listen(this.port, '0.0.0.0', () => {
                 this.logger.info(`🧽 Sponge Web Interface running on http://localhost:${this.port}`);
                 this.logger.info(`📊 API endpoints available at http://localhost:${this.port}/api`);
+                this.logger.info(`🌐 Also accessible at http://127.0.0.1:${this.port}`);
                 resolve(this.server);
+            });
+            
+            // Handle server startup errors
+            this.server.on('error', (error) => {
+                if (error.code === 'EADDRINUSE') {
+                    this.logger.error(`Port ${this.port} is already in use`);
+                } else if (error.code === 'EACCES') {
+                    this.logger.error(`Permission denied to bind to port ${this.port}`);
+                } else {
+                    this.logger.error('Server startup error:', error);
+                }
+                reject(error);
+            });
+            
+            // Handle uncaught server errors
+            this.server.on('clientError', (err, socket) => {
+                this.logger.error('Client error:', err);
+                socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
             });
         });
     }
