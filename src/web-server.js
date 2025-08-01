@@ -174,6 +174,7 @@ class SpongeWebServer {
                 
                 const crawlConfig = await configManager.loadConfig({
                     startUrl: url,
+                    flatFileStructure: true, // Use flat structure for web interface downloads
                     ...processedConfig
                 });
                 

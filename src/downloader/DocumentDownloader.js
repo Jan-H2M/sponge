@@ -193,7 +193,10 @@ class DocumentDownloader {
         // Generate filename
         const filename = this.filterManager.sanitizeFilename(url, fileInfo.contentType);
         
-        if (this.config.createMirrorStructure) {
+        if (this.config.flatFileStructure) {
+            // Flat structure - all files directly in outputDir
+            return this.getFlatOutputPath(baseOutputDir, filename, urlObj.hostname);
+        } else if (this.config.createMirrorStructure) {
             // Create directory structure mirroring the website
             const hostname = urlObj.hostname;
             const pathname = urlObj.pathname;
@@ -212,6 +215,39 @@ class DocumentDownloader {
             
             return path.join(typeDir, prefixedFilename);
         }
+    }
+
+    /**
+     * Get flat output path with conflict resolution
+     */
+    getFlatOutputPath(baseOutputDir, filename, hostname) {
+        // Try the original filename first
+        let outputPath = path.join(baseOutputDir, filename);
+        
+        // If file doesn't exist, use it
+        if (!fs.existsSync(outputPath)) {
+            return outputPath;
+        }
+        
+        // Handle naming conflicts by adding hostname prefix
+        const hostnamePrefix = hostname.replace(/[^a-zA-Z0-9]/g, '_');
+        const prefixedFilename = `${hostnamePrefix}_${filename}`;
+        outputPath = path.join(baseOutputDir, prefixedFilename);
+        
+        // If still conflicts, add a counter
+        if (fs.existsSync(outputPath)) {
+            const ext = path.extname(prefixedFilename);
+            const baseName = path.basename(prefixedFilename, ext);
+            let counter = 1;
+            
+            do {
+                const numberedFilename = `${baseName}_${counter}${ext}`;
+                outputPath = path.join(baseOutputDir, numberedFilename);
+                counter++;
+            } while (fs.existsSync(outputPath) && counter < 1000); // Safety limit
+        }
+        
+        return outputPath;
     }
 
     /**

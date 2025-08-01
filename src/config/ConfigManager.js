@@ -23,6 +23,7 @@ class ConfigManager {
             // Output settings
             outputDir: './downloads',
             createMirrorStructure: true,
+            flatFileStructure: false, // When true, saves all files directly in outputDir without subdirectories
             
             // File filtering
             allowedFileTypes: [
