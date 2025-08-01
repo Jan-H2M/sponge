@@ -1,0 +1,58 @@
+{
+  "metadata": {
+    "crawlId": "sponge-1754042648748-pb5xyt5mu",
+    "startUrl": "https://httpbin.org/html",
+    "crawlTime": "2025-08-01T10:04:08.748Z",
+    "config": {
+      "maxDepth": 1,
+      "maxPages": 2,
+      "concurrency": 5,
+      "outputDir": "./debug-detailed",
+      "createMirrorStructure": true,
+      "allowedFileTypes": [],
+      "maxFileSize": 104857600,
+      "minFileSize": 100,
+      "allowedDomains": [],
+      "blockedDomains": [],
+      "stayOnDomain": true,
+      "delay": 1000,
+      "randomDelay": true,
+      "respectRobotsTxt": true,
+      "auth": {
+        "type": null,
+        "hasCredentials": true
+      },
+      "timeout": 30000,
+      "userAgent": "Sponge-Crawler/1.0.0 (+https://github.com/username/sponge-crawler)",
+      "headers": {},
+      "exportMetadata": true,
+      "metadataFormat": "json",
+      "savePageContent": true,
+      "pageContentFormat": "markdown",
+      "logLevel": "info",
+      "logProgress": true,
+      "followRedirects": true,
+      "ignoreSSLErrors": false,
+      "useHeadlessMode": false,
+      "startUrl": "https://httpbin.org/html"
+    }
+  },
+  "statistics": {
+    "pagesVisited": 1,
+    "documentsFound": 0,
+    "documentsDownloaded": 0,
+    "errors": 0,
+    "startTime": "2025-08-01T10:04:07.279Z",
+    "endTime": null,
+    "queueSize": 0,
+    "currentUrl": null,
+    "totalPagesDiscovered": 0,
+    "paginationDetected": false,
+    "estimatedTotalPages": 0,
+    "aborted": false,
+    "duration": null,
+    "durationFormatted": null
+  },
+  "documents": [],
+  "errors": []
+}

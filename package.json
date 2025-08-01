@@ -1,0 +1,68 @@
+{
+  "name": "sponge-crawler",
+  "version": "1.0.0",
+  "description": "Website Content & Document Crawler for Developers - Automate extraction and downloading of content/documents from public websites",
+  "main": "src/index.js",
+  "bin": {
+    "sponge": "./bin/sponge.js"
+  },
+  "scripts": {
+    "start": "node src/web-server.js",
+    "dev": "nodemon src/index.js",
+    "cli": "node bin/sponge.js",
+    "web": "node src/web-server.js",
+    "web:start": "nohup node src/web-server.js > server.log 2>&1 & echo 'Server started in background'",
+    "web:stop": "pkill -f 'node.*web-server' && echo 'Server stopped' || echo 'No server running'",
+    "web:restart": "npm run web:stop && sleep 1 && npm run web:start",
+    "web:logs": "tail -f server.log",
+    "test": "jest",
+    "lint": "eslint src/",
+    "build": "echo 'Build completed'",
+    "config:init": "node bin/sponge.js config --init",
+    "vercel-build": "echo 'Vercel build completed'"
+  },
+  "keywords": [
+    "web-crawler",
+    "document-downloader",
+    "content-extraction",
+    "web-scraping",
+    "developer-tools",
+    "automation",
+    "archiving"
+  ],
+  "author": "Developer",
+  "license": "MIT",
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "axios": "^1.11.0",
+    "cheerio": "^1.1.2",
+    "commander": "^11.1.0",
+    "express": "^4.21.2",
+    "fs-extra": "^11.3.0",
+    "mime-types": "^2.1.35",
+    "p-limit": "^4.0.0",
+    "robots-parser": "^3.0.1",
+    "url-parse": "^1.5.10",
+    "winston": "^3.17.0"
+  },
+  "optionalDependencies": {
+    "puppeteer": "^21.6.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "pkg": "^5.8.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jan-H2M/sponge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jan-H2M/sponge/issues"
+  },
+  "homepage": "https://github.com/Jan-H2M/sponge#readme"
+}
