@@ -438,7 +438,12 @@ class DocumentDownloader {
     getPageContentPath(url, filename, metadata) {
         const urlObj = new URL(url);
         
-        if (this.config.createMirrorStructure) {
+        if (this.config.flatFileStructure) {
+            // Truly flat structure - directly in outputDir with conflict resolution
+            const domain = urlObj.hostname.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const prefixedFilename = `${domain}_${filename}`;
+            return this.getFlatOutputPath(this.config.outputDir, prefixedFilename, urlObj.hostname);
+        } else if (this.config.createMirrorStructure) {
             // Create directory structure based on URL
             const domain = urlObj.hostname;
             const pathParts = urlObj.pathname.split('/').filter(p => p);

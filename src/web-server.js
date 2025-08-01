@@ -156,20 +156,18 @@ class SpongeWebServer {
                 const processedConfig = { ...config };
                 if (config.allowedFileTypes) {
                     const pageTypes = config.allowedFileTypes.filter(ft => ft.startsWith('page-'));
+                    const documentTypes = config.allowedFileTypes.filter(ft => !ft.startsWith('page-'));
+                    
                     if (pageTypes.length > 0) {
                         // Enable page content saving with the first page type found
                         const format = pageTypes[0].replace('page-', '');
                         processedConfig.savePageContent = true;
                         processedConfig.pageContentFormat = format;
-                        
-                        // Remove page-* from allowedFileTypes as they're not real file types
-                        processedConfig.allowedFileTypes = config.allowedFileTypes.filter(ft => !ft.startsWith('page-'));
-                        
-                        // If only page types were selected and no other file types, disable document downloading
-                        if (processedConfig.allowedFileTypes.length === 0) {
-                            processedConfig.allowedFileTypes = []; // Empty array means no document types
-                        }
                     }
+                    
+                    // Always set allowedFileTypes to only the non-page types selected
+                    // This ensures only selected document types are downloaded
+                    processedConfig.allowedFileTypes = documentTypes;
                 }
                 
                 const crawlConfig = await configManager.loadConfig({
