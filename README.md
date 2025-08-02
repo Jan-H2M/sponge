@@ -1,229 +1,240 @@
 # 🧽 Sponge Crawler
 
-Website Content & Document Crawler for Developers - Automate extraction and downloading of content/documents from public websites.
+A powerful, user-friendly web crawler and document downloader that extracts content and documents from websites while respecting ethical crawling practices.
 
-## Key Features
+![Sponge Crawler Interface](https://img.shields.io/badge/Interface-Web%20%26%20CLI-blue)
+![Node.js](https://img.shields.io/badge/Node.js-16+-green)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
-🌐 **Customizable Web Crawler**: Define crawl depth, allowed domains, content types (HTML, JSON, documents, images), and rate limits.
+## ✨ Features
 
-📂 **Document Collector**: Automatically detect and download file assets such as PDFs, Office documents, images, and other static files.
+### 🎯 **Smart Crawling**
+- **Intelligent Page Discovery** - Analyzes sitemaps and pagination patterns
+- **Pre-Crawl Estimation** - Shows expected page count with confidence scoring
+- **Configurable Depth Control** - Set crawling depth (1-10 levels)
+- **Domain Filtering** - Stay within target domains or explore freely
+- **Real-Time Progress** - Live monitoring with detailed statistics
 
-🔐 **Auth Support**: Supports session-based or token-based authentication (e.g., Basic Auth, Bearer tokens, cookies).
+### 📄 **Content Extraction**
+- **Multiple Content Types** - HTML, Markdown, Plain Text page content
+- **Document Detection** - Automatically finds PDFs, DOCs, images, and more
+- **Flat File Structure** - Organized downloads in user-friendly format
+- **On-Demand Downloads** - Files downloaded when requested (ZIP format)
+- **Smart Status Display** - Clear "Available" status for all discoverable content
 
-🧠 **Smart Filtering**: Include/exclude resources based on file type, URL pattern, or content size.
+### 🌐 **Modern Web Interface**
+- **Single-Page Layout** - Everything visible without scrolling
+- **Compact Design** - Streamlined, focused user experience
+- **Mobile Responsive** - Works on desktop, tablet, and mobile
+- **Enhanced Tooltips** - Detailed explanations for all features
+- **Bulk Downloads** - Download all found documents as ZIP
 
-📁 **Structured Export**: Save content using a mirrored directory structure or export metadata in JSON/CSV for further processing.
+### 🔧 **Advanced Options**
+- **File Type Filtering** - Select specific document types to download
+- **Rate Limiting** - Configurable delays to be respectful to target sites
+- **Robust Error Handling** - Graceful timeouts and recovery
+- **Export Formats** - JSON metadata, human-readable reports
 
-🔁 **Automated Jobs**: Schedule recurring downloads or integrate into pipelines (e.g., via CLI or API).
+## 🚀 Quick Start
 
-## Installation & Quick Start
+### Prerequisites
+- Node.js 16+ 
+- npm or yarn
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+### Installation
+```bash
+# Clone the repository
+git clone https://github.com/Jan-H2M/sponge.git
+cd sponge
 
-2. **Start the web interface:**
-   ```bash
-   npm run web
-   ```
-   Navigate to `http://localhost:3000`
+# Install dependencies
+npm install
 
-3. **Use the CLI:**
-   ```bash
-   # Crawl a website
-   npx sponge crawl https://example.com -d 2 -o ./downloads
-
-   # Create example config
-   npx sponge config --init
-
-   # Schedule a job
-   npx sponge schedule "0 2 * * *" https://example.com --name daily-crawl
-   ```
-
-## Project Structure
-
-```
-sponge/
-├── bin/
-│   └── sponge.js           # CLI entry point
-├── src/
-│   ├── crawler/            # Core crawling logic
-│   │   ├── SpongeCrawler.js
-│   │   ├── UrlQueue.js
-│   │   └── RobotsChecker.js
-│   ├── downloader/         # File downloading
-│   │   └── DocumentDownloader.js
-│   ├── auth/               # Authentication handling
-│   │   └── AuthManager.js
-│   ├── config/             # Configuration management
-│   │   └── ConfigManager.js
-│   ├── export/             # Results export
-│   │   └── ExportManager.js
-│   ├── scheduler/          # Job scheduling
-│   │   └── ScheduleManager.js
-│   ├── utils/              # Utility functions
-│   │   ├── Logger.js
-│   │   └── FilterManager.js
-│   ├── index.js            # Main entry point
-│   └── web-server.js       # Web interface server
-├── index.html              # Web interface
-├── app.js                  # Frontend JavaScript
-├── styles.css              # Web interface styles
-├── server.js               # Original server (deprecated)
-├── package.json            # Project configuration
-└── README.md               # This file
+# Start the web interface
+npm start
 ```
 
-## Usage Examples
+The web interface will be available at **http://127.0.0.1:3000**
 
-### Command Line Interface
+### Basic Usage
+
+1. **Enter Website URL** - Input the target website URL
+2. **Configure Options** - Set crawl depth and select content types
+3. **View Page Estimation** - See predicted page count and analysis
+4. **Start Crawling** - Watch real-time progress
+5. **Download Results** - Get all found documents as ZIP file
+
+## 🛠️ Usage
+
+### Web Interface (Recommended)
+The easiest way to use Sponge Crawler is through the streamlined web interface:
 
 ```bash
-# Basic crawl
-sponge crawl https://example.com
-
-# Advanced crawl with options
-sponge crawl https://example.com \
-  --depth 3 \
-  --output ./my-downloads \
-  --allowed-types pdf,docx,xlsx \
-  --max-pages 500 \
-  --delay 2000
-
-# With authentication
-sponge crawl https://example.com \
-  --auth-type basic \
-  --auth-user myuser \
-  --auth-pass mypass
-
-# Schedule recurring crawl
-sponge schedule "0 2 * * *" https://example.com --name daily-docs
-
-# Test configuration
-sponge test https://example.com --config ./my-config.json
+npm start
+# Open http://127.0.0.1:3000 in your browser
 ```
 
-### Configuration File
+**Features:**
+- Compact single-page layout
+- Pre-crawl page estimation with confidence scoring
+- Real-time progress monitoring
+- Bulk ZIP downloads
+- Enhanced status descriptions
 
-Create `sponge.config.json`:
+### Command Line Interface
+```bash
+# Basic crawl
+npx sponge crawl https://example.com
 
-```json
-{
-  "startUrl": "https://example.com",
-  "maxDepth": 3,
-  "maxPages": 1000,
-  "allowedFileTypes": ["pdf", "docx", "xlsx", "jpg", "png"],
-  "maxFileSize": 104857600,
-  "outputDir": "./downloads",
-  "respectRobotsTxt": true,
-  "delay": 1000,
-  "auth": {
-    "type": "basic",
-    "username": "user",
-    "password": "pass"
-  }
-}
+# Advanced crawl with options
+npx sponge crawl https://example.com -d 3 -o ./downloads --max-pages 500 --delay 2000
+
+# Create configuration file
+npm run config:init
+
+# Test crawler setup
+npx sponge test https://example.com
 ```
 
 ### Programmatic Usage
-
 ```javascript
-const { SpongeCrawler } = require('sponge-crawler');
+const { SpongeCrawler } = require('./src/crawler/SpongeCrawler');
 
 const config = {
-  startUrl: 'https://example.com',
-  maxDepth: 2,
-  outputDir: './downloads',
-  allowedFileTypes: ['pdf', 'docx']
+    startUrl: 'https://example.com',
+    maxDepth: 3,
+    maxPages: 100,
+    outputDir: './downloads',
+    allowedFileTypes: ['pdf', 'doc', 'docx'],
+    respectRobotsTxt: false  // Optional: ignore robots.txt
 };
 
 const crawler = new SpongeCrawler(config);
-await crawler.start();
+await crawler.crawl();
 ```
 
-## API Endpoints (Web Interface)
+## 📁 Configuration
 
-- `GET /` - Web interface
-- `POST /api/crawl/start` - Start new crawl
-- `GET /api/crawl/:id/status` - Check crawl status
-- `GET /api/crawl/:id/download` - Download results
-- `GET /api/jobs` - List scheduled jobs
-- `POST /api/jobs` - Create scheduled job
-- `DELETE /api/jobs/:name` - Remove scheduled job
-- `GET /api/health` - Health check
+### Content Types
+Select from various content and document types:
 
-## Use Cases
+**Page Content:**
+- 📄 HTML pages
+- 📝 Markdown conversion  
+- 📋 Plain text extraction
 
-- **Automated archiving** of project documentation or web-based knowledge bases
-- **Bulk download** of legal/public datasets spread over multiple URLs
-- **Building offline mirrors** of static sites for testing, compliance, or research
-- **Extracting content** for analysis or NLP pipelines
-- **Compliance monitoring** - regularly download and check website content
+**Documents:**
+- 📎 PDFs, Word docs, Excel files
+- 🖼️ Images (PNG, JPG, GIF, etc.)
+- 📦 Archives (ZIP, RAR, 7Z)
+- 🎵 Audio files (MP3, WAV, etc.)
+- 🎬 Video files (MP4, AVI, etc.)
 
-## Configuration Options
+### Crawl Settings
+- **Max Depth**: How deep to crawl (1-10 levels)
+- **Max Pages**: Maximum pages to visit (prevents runaway crawls)
+- **Stay on Domain**: Limit crawling to the starting domain
+- **Output Directory**: Where to save downloaded content
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `startUrl` | Starting URL to crawl | Required |
-| `maxDepth` | Maximum crawl depth | 3 |
-| `maxPages` | Maximum pages to crawl | 1000 |
-| `allowedFileTypes` | File extensions to download | See config |
-| `maxFileSize` | Maximum file size (bytes) | 100MB |
-| `outputDir` | Download directory | `./downloads` |
-| `respectRobotsTxt` | Follow robots.txt rules | `true` |
-| `delay` | Delay between requests (ms) | 1000 |
-| `concurrency` | Concurrent requests | 5 |
+## 🎯 Key Features Explained
 
-## Authentication Support
+### **Page Estimation**
+Before crawling, Sponge analyzes the target website to:
+- 📊 Estimate total crawlable pages
+- 🔗 Detect pagination patterns
+- 🗺️ Find and analyze sitemaps
+- ⭐ Provide confidence ratings (HIGH/MEDIUM/LOW)
 
-- **Basic Auth**: Username/password
-- **Bearer Token**: API tokens
-- **Cookie Auth**: Session cookies
-- **Custom Headers**: Flexible header-based auth
+Example estimation results:
+```
+📊 Page Estimation Results
+Confidence: HIGH ⭐⭐⭐
 
-## Legal & Ethical Use
+Estimated Total: 2,267 pages
+Pages Discovered: 0 (sitemap-based)
+Pagination: No
+Sitemap: Yes ✅
+```
 
-⚖️ **Important**: This tool is designed for ethical use within legal boundaries:
+### **Smart Document Detection**
+The crawler intelligently identifies downloadable content:
+- 🔍 Scans page links for document URLs
+- 📋 Checks file extensions and MIME types
+- 🎯 Filters based on your selected file types
+- 📈 Shows real-time discovery progress
 
-- Respects `robots.txt` by default (configurable)
-- Not intended for scraping private, copyrighted, or protected content without consent
-- Users are responsible for complying with target sites' terms of service and copyright laws
-- Built for legitimate use cases like archiving public documentation and research
+### **On-Demand Downloads**
+Efficient download system:
+- 📝 Documents detected and cataloged during crawling
+- ⚡ Actual downloads happen when you request the ZIP
+- 💾 Saves bandwidth and storage during exploration
+- 🔄 Fresh downloads ensure latest versions
 
-## Development
+## 📊 Understanding Results
 
-### Scripts
+### Status Indicators
+- **Available** 🟢 - Document found and ready for download
+- **Downloading** 🔵 - Currently being fetched
+- **Completed** ✅ - Successfully downloaded
+- **Failed** ❌ - Download encountered an error
 
-- `npm start` - Start main application
-- `npm run web` - Start web interface
-- `npm run cli` - Run CLI directly
-- `npm run config:init` - Create example config
-- `npm test` - Run tests
-- `npm run lint` - Lint code
-- `npm run build` - Build for distribution
+### Confidence Levels
+- **HIGH** ⭐⭐⭐ - Based on sitemap analysis (very reliable)
+- **MEDIUM** ⭐⭐ - Based on link analysis (moderately reliable)  
+- **LOW** ⭐ - Limited data available (less reliable)
 
-### Technologies Used
+## 🛡️ Recent Improvements
 
-- **Core**: Node.js, Express.js
-- **Crawling**: Axios, Cheerio, Puppeteer (optional)
-- **CLI**: Commander.js
-- **Scheduling**: node-cron
-- **Logging**: Winston
-- **Frontend**: HTML5, CSS3, Vanilla JavaScript
+### v2.0 Features
+- ✅ **Fixed Status Display** - Documents now show "Available" instead of confusing "Pending"
+- ✅ **Streamlined Interface** - Compact single-page layout without scrolling
+- ✅ **Enhanced Page Estimation** - Detailed descriptions and confidence tooltips
+- ✅ **Improved Error Handling** - Graceful timeouts and fallback responses
+- ✅ **Robots.txt Handling** - Option removed (always ignored for better crawling)
 
-## Contributing
+## 🔧 Development
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test your changes thoroughly
-5. Submit a pull request
+### Project Structure
+```
+sponge/
+├── src/
+│   ├── crawler/          # Core crawling logic
+│   │   ├── SpongeCrawler.js
+│   │   ├── UrlQueue.js
+│   │   ├── PageEstimator.js
+│   │   └── RobotsChecker.js
+│   ├── downloader/       # Document download handling
+│   │   └── DocumentDownloader.js
+│   ├── auth/            # Authentication support
+│   │   └── AuthManager.js
+│   ├── utils/           # Utility functions
+│   │   ├── FilterManager.js
+│   │   └── Logger.js
+│   ├── export/          # Result export formats
+│   │   └── ExportManager.js
+│   └── web-server.js    # Express server
+├── bin/sponge.js        # CLI entry point
+├── index.html          # Web interface
+├── app.js              # Frontend JavaScript
+├── styles.css          # Interface styling
+└── CLAUDE.md           # Technical documentation
+```
 
-## License
+### Available Scripts
+```bash
+npm start              # Start web interface
+npm run web            # Alternative web interface command
+npm run cli            # Run CLI directly
+npm run dev            # Development with auto-reload
+npm test               # Run tests
+npm run lint           # Lint code
+npm run build          # Build distribution package
+```
 
-MIT License - see LICENSE file for details.
-
----
-
-Built with ❤️ for the developer community. Use responsibly! 🧽
+### Server Management
+```bash
+npm run web:start      # Start server in background
+npm run web:stop       # Stop background server
+npm run web:restart    # Restart server
+npm run web:logs       # View server logs
+```
