@@ -42,7 +42,6 @@ function newCrawl() {
     if (adjustedMaxPagesField) {
         adjustedMaxPagesField.value = '';
     }
-    document.getElementById('respectRobots').checked = true;
     document.getElementById('stayOnDomain').checked = true;
     
     // Clear all file type checkboxes
@@ -118,7 +117,6 @@ async function startCrawl() {
         ? parseInt(adjustedMaxPagesField.value) 
         : 1000;
     const downloadDir = document.getElementById('downloadDir').value.trim();
-    const respectRobots = document.getElementById('respectRobots').checked;
     const stayOnDomain = document.getElementById('stayOnDomain').checked;
     
     // Collect selected file types from checkboxes
@@ -151,7 +149,7 @@ async function startCrawl() {
     const config = {
         maxDepth,
         maxPages,
-        respectRobotsTxt: respectRobots,
+        respectRobotsTxt: false,
         stayOnDomain
     };
     
@@ -399,7 +397,7 @@ function displayCrawlStatus(status) {
             ${status.status === 'completed' ? `
                 <div class="completion-stats">
                     <div class="completion-summary">
-                        <span>✅ Completed: ${pagesVisited} pages crawled, ${stats.documentsFound || 0} documents found, ${stats.documentsDownloaded || 0} documents downloaded</span>
+                        <span>✅ Completed: ${pagesVisited} pages crawled, ${stats.documentsFound || 0} documents found and available for download</span>
                         ${paginationDetected ? `<br><span>📑 Pagination: ${totalPagesDiscovered} pages discovered and processed</span>` : ''}
                     </div>
                 </div>
@@ -522,7 +520,7 @@ function displayDownloadInterface(crawlId, data) {
                             <span class="col-filename" title="${doc.url}">${doc.filename}</span>
                             <span class="col-size">${doc.sizeFormatted}</span>
                             <span class="col-type">${doc.extension || 'unknown'}</span>
-                            <span class="col-status status-pending">Pending</span>
+                            <span class="col-status status-available">Available</span>
                         </div>
                     `).join('')}
                 </div>
@@ -1265,6 +1263,15 @@ function displayEstimationResults(estimation) {
     
     confidenceBadge.textContent = estimation.confidence.toUpperCase();
     confidenceBadge.className = `confidence-badge ${confidenceClass[estimation.confidence] || 'confidence-unknown'}`;
+    
+    // Add tooltip for confidence levels
+    const confidenceTooltips = {
+        'high': 'Very reliable - based on sitemap or comprehensive analysis',
+        'medium': 'Moderately reliable - based on link analysis and patterns',
+        'low': 'Less reliable - limited data available or estimation failed',
+        'error': 'Estimation failed - using default values'
+    };
+    confidenceBadge.title = confidenceTooltips[estimation.confidence] || 'Unknown confidence level';
     
     // Update stats
     estimatedTotal.textContent = estimation.estimatedTotal.toLocaleString();

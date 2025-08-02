@@ -7,29 +7,16 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header>
-        <nav class="navbar">
-            <div class="nav-brand">
-                <h1>🧽 Sponge Crawler</h1>
-            </div>
-            <div class="nav-links">
-                <a href="#home">Home</a>
-                <a href="#crawler">Crawler</a>
-            </div>
-        </nav>
+    <header class="compact-header">
+        <div class="header-content">
+            <h1>🧽 Sponge Crawler</h1>
+            <span class="tagline">Website Content & Document Crawler</span>
+        </div>
     </header>
 
     <main>
-        <section id="home" class="hero">
-            <div class="hero-content">
-                <h2>Website Content & Document Crawler</h2>
-                <p>Automate extraction and downloading of content/documents from public websites</p>
-            </div>
-        </section>
-
         <section id="crawler" class="content-section">
             <div class="container">
-                <h2>Web Crawler</h2>
                 <div class="crawler-form">
                     <div class="form-group">
                         <label for="crawlUrl">Website URL</label>
@@ -116,12 +103,6 @@
                         <small>Directory where files will be saved (click Browse to select)</small>
                     </div>
                     
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="respectRobots" checked />
-                            Respect robots.txt
-                        </label>
-                    </div>
                     
                     <div class="form-group">
                         <label>
@@ -145,20 +126,32 @@
                                 
                                 <div class="estimation-stats">
                                     <div class="stat-item">
-                                        <span class="stat-label">Estimated Total:</span>
-                                        <span id="estimatedTotal" class="stat-value">0</span>
+                                        <div>
+                                            <span class="stat-label">Estimated Total:</span>
+                                            <span id="estimatedTotal" class="stat-value">0</span>
+                                        </div>
+                                        <small class="stat-description">Total pages found on the website that can be crawled</small>
                                     </div>
                                     <div class="stat-item">
-                                        <span class="stat-label">Pages Discovered:</span>
-                                        <span id="discoveredPages" class="stat-value">0</span>
+                                        <div>
+                                            <span class="stat-label">Pages Discovered:</span>
+                                            <span id="discoveredPages" class="stat-value">0</span>
+                                        </div>
+                                        <small class="stat-description">Pages found by analyzing links and navigation patterns</small>
                                     </div>
                                     <div class="stat-item">
-                                        <span class="stat-label">Pagination:</span>
-                                        <span id="paginationStatus" class="stat-value">No</span>
+                                        <div>
+                                            <span class="stat-label">Pagination:</span>
+                                            <span id="paginationStatus" class="stat-value">No</span>
+                                        </div>
+                                        <small class="stat-description">Whether "Next Page" or numbered page navigation was detected</small>
                                     </div>
                                     <div class="stat-item">
-                                        <span class="stat-label">Sitemap:</span>
-                                        <span id="sitemapStatus" class="stat-value">No</span>
+                                        <div>
+                                            <span class="stat-label">Sitemap:</span>
+                                            <span id="sitemapStatus" class="stat-value">No</span>
+                                        </div>
+                                        <small class="stat-description">Official page listing file found (most reliable estimation method)</small>
                                     </div>
                                 </div>
                                 

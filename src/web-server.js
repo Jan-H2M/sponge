@@ -64,11 +64,17 @@ class SpongeWebServer {
                 
                 const estimatorConfig = {
                     maxDepth: config?.maxDepth || 3,
-                    timeout: config?.timeout || 10000,
+                    timeout: Math.min(config?.timeout || 5000, 15000), // Cap at 15 seconds
                     userAgent: config?.userAgent || 'Sponge-Crawler/1.0.0'
                 };
 
-                const estimation = await PageEstimator.quickEstimate(url, estimatorConfig);
+                // Add timeout wrapper to prevent hanging
+                const estimationPromise = PageEstimator.quickEstimate(url, estimatorConfig);
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Page estimation timeout after 20 seconds')), 20000);
+                });
+
+                const estimation = await Promise.race([estimationPromise, timeoutPromise]);
                 
                 // Auto-adjust maxPages based on estimation
                 let suggestedMaxPages = estimation.estimatedTotal;
@@ -93,18 +99,27 @@ class SpongeWebServer {
 
             } catch (error) {
                 this.logger.error('Failed to estimate pages:', error);
-                res.status(500).json({ 
-                    error: error.message,
-                    estimation: {
-                        estimatedTotal: 1,
-                        discoveredUrls: 0,
-                        paginationDetected: false,
-                        sitemapFound: false,
-                        patterns: [],
-                        sampleUrls: [],
-                        confidence: 'error',
-                        suggestedMaxPages: 1
-                    }
+                
+                // Return graceful fallback instead of server error
+                const fallbackEstimation = {
+                    estimatedTotal: 100, // Reasonable default
+                    discoveredUrls: 0,
+                    paginationDetected: false,
+                    sitemapFound: false,
+                    patterns: [],
+                    sampleUrls: [],
+                    confidence: 'low',
+                    suggestedMaxPages: 100,
+                    originalMaxPages: config?.maxPages || 100,
+                    autoAdjusted: false,
+                    warning: 'Page estimation failed - using default values',
+                    errorMessage: error.message.includes('timeout') ? 'Estimation timed out' : 'Estimation failed'
+                };
+                
+                res.json({
+                    success: true, // Don't fail the request
+                    url,
+                    estimation: fallbackEstimation
                 });
             }
         });
@@ -354,8 +369,9 @@ class SpongeWebServer {
                         contentType: metadata.contentType || null,
                         size: metadata.size || null,
                         sizeFormatted: metadata.size ? this.formatBytes(metadata.size) : 'Unknown',
-                        downloaded: metadata.downloaded || false,
-                        downloadPath: metadata.filePath || null
+                        downloaded: true, // Mark as available for on-demand download
+                        downloadPath: metadata.filePath || null,
+                        status: 'available' // Explicitly set status
                     };
                 });
             }
