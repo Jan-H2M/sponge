@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sponge Crawler - Web Interface</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2025080414">
 </head>
 <body>
     <header class="compact-header">
@@ -41,7 +41,7 @@
                                         <span class="file-type-label">📝 Plain Text Pages</span>
                                     </label>
                                     <label class="file-type-option page-content-type">
-                                        <input type="checkbox" name="fileTypes" value="page-markdown" />
+                                        <input type="checkbox" name="fileTypes" value="page-markdown" checked />
                                         <span class="file-type-label">📄 Markdown Pages</span>
                                     </label>
                                     <label class="file-type-option page-content-type">
@@ -56,15 +56,15 @@
                                 <h4>📎 Document Files</h4>
                                 <div class="file-types-grid">
                                     <label class="file-type-option">
-                                        <input type="checkbox" name="fileTypes" value="pdf" />
+                                        <input type="checkbox" name="fileTypes" value="pdf" checked />
                                         <span class="file-type-label">📄 PDF</span>
                                     </label>
                                     <label class="file-type-option">
-                                        <input type="checkbox" name="fileTypes" value="doc,docx" />
+                                        <input type="checkbox" name="fileTypes" value="doc,docx" checked />
                                         <span class="file-type-label">📝 Word</span>
                                     </label>
                                     <label class="file-type-option">
-                                        <input type="checkbox" name="fileTypes" value="xls,xlsx" />
+                                        <input type="checkbox" name="fileTypes" value="xls,xlsx" checked />
                                         <span class="file-type-label">📊 Excel</span>
                                     </label>
                                     <label class="file-type-option">
@@ -98,7 +98,7 @@
                         <label for="downloadDir">Download Directory</label>
                         <div class="directory-picker">
                             <input type="text" id="downloadDir" placeholder="./downloads" readonly />
-                            <button type="button" class="browse-btn" onclick="openDirectoryBrowser()">📁 Browse</button>
+                            <button type="button" class="btn-primary" onclick="openDirectoryBrowser()">📁 Browse</button>
                         </div>
                         <small>Directory where files will be saved (click Browse to select)</small>
                     </div>
@@ -113,7 +113,7 @@
 
                     <!-- Page Estimation Section -->
                     <div id="pageEstimationSection" class="estimation-section">
-                        <button class="btn-secondary estimate-button" onclick="estimatePages()">
+                        <button class="btn-info" onclick="estimatePages()">
                             🔄 Refresh Estimation
                         </button>
                         
@@ -159,7 +159,7 @@
                                     <label for="adjustedMaxPages">Adjust Max Pages:</label>
                                     <div class="adjustment-controls">
                                         <input type="number" id="adjustedMaxPages" min="1" max="10000" />
-                                        <button class="btn-small" onclick="adjustMaxPages()">Apply</button>
+                                        <button class="btn-small btn-success" onclick="adjustMaxPages()">Apply</button>
                                     </div>
                                     <div id="adjustmentInfo" class="adjustment-info"></div>
                                 </div>
@@ -173,8 +173,9 @@
                     </div>
                     
                     <div class="button-group">
-                        <button class="new-crawl-button" onclick="newCrawl()">🔄 Reset Form</button>
-                        <button class="cta-button" onclick="startCrawl()">Start Crawl</button>
+                        <button class="btn-secondary" onclick="newCrawl()">🔄 Reset Form</button>
+                        <button class="btn-secondary" onclick="showPreviousCrawls()">📂 Previous Crawls</button>
+                        <button class="btn-primary" onclick="startCrawl()">Start Crawl</button>
                     </div>
                 </div>
                 
@@ -184,6 +185,25 @@
                         <button class="btn-small btn-secondary" onclick="clearCrawlStatus()">Clear</button>
                     </div>
                     <div id="statusContent"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Previous Crawls Section -->
+        <section id="previousCrawls" class="previous-crawls" style="display: none;">
+            <div class="container">
+                <div class="section-header">
+                    <h2>📂 Previous Crawls</h2>
+                    <p>Access your previously completed crawls and download results</p>
+                </div>
+                
+                <div class="crawls-controls">
+                    <button class="btn-secondary" onclick="refreshCrawlsList()">🔄 Refresh</button>
+                    <button class="btn-secondary" onclick="hidePreviousCrawls()">✖️ Close</button>
+                </div>
+                
+                <div id="crawlsList" class="crawls-list">
+                    <div class="loading">Loading previous crawls...</div>
                 </div>
             </div>
         </section>
@@ -200,9 +220,9 @@
             </div>
             <div class="modal-body">
                 <div class="directory-navigation">
-                    <button id="upButton" class="nav-btn" onclick="navigateUp()">⬆️ Up</button>
+                    <button id="upButton" class="btn-small btn-secondary" onclick="navigateUp()">⬆️ Up</button>
                     <span id="currentPath" class="current-path">/</span>
-                    <button class="nav-btn" onclick="refreshDirectory()">🔄 Refresh</button>
+                    <button class="btn-small btn-secondary" onclick="refreshDirectory()">🔄 Refresh</button>
                 </div>
                 
                 <div id="directoryList" class="directory-list">
@@ -212,11 +232,11 @@
                 <div class="directory-actions">
                     <div class="create-directory">
                         <input type="text" id="newDirName" placeholder="New folder name" />
-                        <button onclick="createNewDirectory()">➕ Create Folder</button>
+                        <button class="btn-success" onclick="createNewDirectory()">➕ Create Folder</button>
                     </div>
                     <div class="modal-buttons">
                         <button class="btn-secondary" onclick="closeDirectoryBrowser()">Cancel</button>
-                        <button id="selectButton" class="download-btn" onclick="selectCurrentDirectory()">Select This Directory</button>
+                        <button id="selectButton" class="btn-success" onclick="selectCurrentDirectory()">Select This Directory</button>
                     </div>
                 </div>
             </div>
@@ -231,6 +251,6 @@
         </div>
     </footer>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=2025080414"></script>
 </body>
 </html>

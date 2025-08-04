@@ -16,10 +16,16 @@ class SpongeWebServer {
         this.app = express();
         this.logger = new Logger();
         this.activeCrawls = new Map();
+        this.crawlRegistryPath = path.join(__dirname, '../crawl-registry.json');
         
         this.setupMiddleware();
         this.setupRoutes();
         this.setupCleanup();
+        
+        // Load crawl registry asynchronously but don't block constructor
+        this.loadCrawlRegistry().catch(error => {
+            this.logger.error('Failed to load crawl registry during startup:', error);
+        });
     }
 
     setupMiddleware() {
@@ -69,9 +75,13 @@ class SpongeWebServer {
                 };
 
                 // Add timeout wrapper to prevent hanging
-                const estimationPromise = PageEstimator.quickEstimate(url, estimatorConfig);
+                const estimationPromise = PageEstimator.quickEstimate(url, estimatorConfig).catch(error => {
+                    // Log the error but don't crash the server
+                    this.logger.error(`PageEstimator failed for ${url}:`, error);
+                    throw error;
+                });
                 const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Page estimation timeout after 20 seconds')), 20000);
+                    setTimeout(() => reject(new Error('Page estimation timeout after 30 seconds')), 30000);
                 });
 
                 const estimation = await Promise.race([estimationPromise, timeoutPromise]);
@@ -92,8 +102,8 @@ class SpongeWebServer {
                     estimation: {
                         ...estimation,
                         suggestedMaxPages,
-                        originalMaxPages: config?.maxPages || 100,
-                        autoAdjusted: suggestedMaxPages !== (config?.maxPages || 100)
+                        originalMaxPages: req.body.config?.maxPages || 100,
+                        autoAdjusted: suggestedMaxPages !== (req.body.config?.maxPages || 100)
                     }
                 });
 
@@ -110,7 +120,7 @@ class SpongeWebServer {
                     sampleUrls: [],
                     confidence: 'low',
                     suggestedMaxPages: 100,
-                    originalMaxPages: config?.maxPages || 100,
+                    originalMaxPages: req.body.config?.maxPages || 100,
                     autoAdjusted: false,
                     warning: 'Page estimation failed - using default values',
                     errorMessage: error.message.includes('timeout') ? 'Estimation timed out' : 'Estimation failed'
@@ -118,7 +128,7 @@ class SpongeWebServer {
                 
                 res.json({
                     success: true, // Don't fail the request
-                    url,
+                    url: req.body.url,
                     estimation: fallbackEstimation
                 });
             }
@@ -212,7 +222,7 @@ class SpongeWebServer {
 
                 // Start crawling
                 crawler.start()
-                    .then(() => {
+                    .then(async () => {
                         const crawl = this.activeCrawls.get(crawlId);
                         if (crawl) {
                             crawl.status = 'completed';
@@ -221,9 +231,11 @@ class SpongeWebServer {
                             if (crawl.crawler) {
                                 crawl.finalStats = crawl.crawler.getCurrentStats();
                             }
+                            // Save to registry
+                            await this.saveCrawlRegistry();
                         }
                     })
-                    .catch((error) => {
+                    .catch(async (error) => {
                         const crawl = this.activeCrawls.get(crawlId);
                         if (crawl) {
                             crawl.status = 'failed';
@@ -233,6 +245,8 @@ class SpongeWebServer {
                             if (crawl.crawler) {
                                 crawl.finalStats = crawl.crawler.getCurrentStats();
                             }
+                            // Save to registry
+                            await this.saveCrawlRegistry();
                         }
                     });
 
@@ -301,7 +315,7 @@ class SpongeWebServer {
         });
 
         // Abort crawl
-        this.app.post('/api/crawl/:id/abort', (req, res) => {
+        this.app.post('/api/crawl/:id/abort', async (req, res) => {
             const crawlId = req.params.id;
             const crawl = this.activeCrawls.get(crawlId);
             
@@ -318,6 +332,9 @@ class SpongeWebServer {
                 crawl.crawler.abort();
                 crawl.status = 'aborted';
                 crawl.endTime = new Date();
+                
+                // Save to registry
+                await this.saveCrawlRegistry();
                 
                 res.json({
                     success: true,
@@ -336,14 +353,17 @@ class SpongeWebServer {
                 status: crawl.status,
                 startTime: crawl.startTime,
                 endTime: crawl.endTime,
-                url: crawl.config.startUrl
+                url: crawl.config.startUrl,
+                stats: crawl.finalStats || crawl.stats,
+                restored: crawl.restored || false,
+                detected: crawl.detected || false
             }));
 
             res.json({ crawls });
         });
 
         // Get list of found documents for a crawl
-        this.app.get('/api/crawl/:id/documents', (req, res) => {
+        this.app.get('/api/crawl/:id/documents', async (req, res) => {
             const crawlId = req.params.id;
             const crawl = this.activeCrawls.get(crawlId);
             
@@ -351,36 +371,79 @@ class SpongeWebServer {
                 return res.status(404).json({ error: 'Crawl not found' });
             }
 
-            // Get documents from crawler
             let documents = [];
-            if (crawl.crawler && crawl.crawler.foundDocuments) {
-                documents = Array.from(crawl.crawler.foundDocuments.entries()).map(([url, metadata], index) => {
-                    const urlObj = new URL(url);
-                    const filename = this.extractFilename(url);
+
+            // Handle restored/detected crawls
+            if (crawl.restored || crawl.detected) {
+                try {
+                    const outputDir = crawl.config.outputDir || './downloads';
                     
-                    return {
-                        index,
-                        url,
-                        filename,
-                        extension: path.extname(filename).toLowerCase().substring(1),
-                        domain: urlObj.hostname,
-                        sourceUrl: metadata.sourceUrl || url,
-                        depth: metadata.depth || 0,
-                        contentType: metadata.contentType || null,
-                        size: metadata.size || null,
-                        sizeFormatted: metadata.size ? this.formatBytes(metadata.size) : 'Unknown',
-                        downloaded: true, // Mark as available for on-demand download
-                        downloadPath: metadata.filePath || null,
-                        status: 'available' // Explicitly set status
-                    };
-                });
+                    // Scan directory for documents
+                    if (await fs.pathExists(outputDir)) {
+                        const files = await fs.readdir(outputDir);
+                        
+                        for (let i = 0; i < files.length; i++) {
+                            const file = files[i];
+                            const filePath = path.join(outputDir, file);
+                            const stats = await fs.stat(filePath);
+                            
+                            // Only include actual document files (not metadata files)
+                            if (stats.isFile() && !file.startsWith('sponge-') && !file.startsWith('www_')) {
+                                const extension = path.extname(file).toLowerCase().substring(1);
+                                
+                                documents.push({
+                                    index: i,
+                                    url: `file:///${filePath}`, // Local file URL
+                                    filename: file,
+                                    extension,
+                                    domain: 'local',
+                                    sourceUrl: `Downloaded from ${crawl.config.startUrl}`,
+                                    depth: 0,
+                                    contentType: this.getContentType(extension),
+                                    size: stats.size,
+                                    sizeFormatted: this.formatBytes(stats.size),
+                                    downloaded: true,
+                                    downloadPath: filePath,
+                                    status: 'available'
+                                });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    this.logger.error('Error scanning documents directory:', error);
+                }
+            } else {
+                // Get documents from active crawler
+                if (crawl.crawler && crawl.crawler.foundDocuments) {
+                    documents = Array.from(crawl.crawler.foundDocuments.entries()).map(([url, metadata], index) => {
+                        const urlObj = new URL(url);
+                        const filename = this.extractFilename(url);
+                        
+                        return {
+                            index,
+                            url,
+                            filename,
+                            extension: path.extname(filename).toLowerCase().substring(1),
+                            domain: urlObj.hostname,
+                            sourceUrl: metadata.sourceUrl || url,
+                            depth: metadata.depth || 0,
+                            contentType: metadata.contentType || null,
+                            size: metadata.size || null,
+                            sizeFormatted: metadata.size ? this.formatBytes(metadata.size) : 'Unknown',
+                            downloaded: true, // Mark as available for on-demand download
+                            downloadPath: metadata.filePath || null,
+                            status: 'available' // Explicitly set status
+                        };
+                    });
+                }
             }
 
             res.json({
                 crawlId,
                 status: crawl.status,
                 totalDocuments: documents.length,
-                documents
+                documents,
+                restored: crawl.restored || false
             });
         });
 
@@ -395,40 +458,70 @@ class SpongeWebServer {
                     return res.status(404).json({ error: 'Crawl not found' });
                 }
 
-                if (!crawl.crawler || !crawl.crawler.foundDocuments) {
-                    return res.status(404).json({ error: 'No documents found' });
-                }
-
-                const documents = Array.from(crawl.crawler.foundDocuments.entries());
-                if (fileIndex < 0 || fileIndex >= documents.length) {
-                    return res.status(404).json({ error: 'Document not found' });
-                }
-
-                const [url, metadata] = documents[fileIndex];
-                const filename = this.extractFilename(url);
-
-                // If file was already downloaded to output directory, serve it
-                if (metadata.filePath && await fs.pathExists(metadata.filePath)) {
-                    res.download(metadata.filePath, filename);
-                } else {
-                    // Download file directly from source URL
-                    const axios = require('axios');
-                    const response = await axios.get(url, {
-                        responseType: 'stream',
-                        timeout: 30000,
-                        headers: {
-                            'User-Agent': crawl.config.userAgent || 'Sponge-Crawler/1.0.0'
-                        }
-                    });
-
-                    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-                    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+                // Handle restored/detected crawls
+                if (crawl.restored || crawl.detected) {
+                    const outputDir = crawl.config.outputDir || './downloads';
                     
-                    if (response.headers['content-length']) {
-                        res.setHeader('Content-Length', response.headers['content-length']);
+                    // Get file list from directory
+                    if (await fs.pathExists(outputDir)) {
+                        const files = await fs.readdir(outputDir);
+                        const documentFiles = [];
+                        
+                        for (const file of files) {
+                            const filePath = path.join(outputDir, file);
+                            const stats = await fs.stat(filePath);
+                            
+                            // Only include actual document files (not metadata files)
+                            if (stats.isFile() && !file.startsWith('sponge-') && !file.startsWith('www_')) {
+                                documentFiles.push({ filename: file, path: filePath });
+                            }
+                        }
+                        
+                        if (fileIndex < 0 || fileIndex >= documentFiles.length) {
+                            return res.status(404).json({ error: 'Document not found' });
+                        }
+                        
+                        const document = documentFiles[fileIndex];
+                        res.download(document.path, document.filename);
+                        return;
+                    }
+                } else {
+                    // Handle active crawls
+                    if (!crawl.crawler || !crawl.crawler.foundDocuments) {
+                        return res.status(404).json({ error: 'No documents found' });
                     }
 
-                    response.data.pipe(res);
+                    const documents = Array.from(crawl.crawler.foundDocuments.entries());
+                    if (fileIndex < 0 || fileIndex >= documents.length) {
+                        return res.status(404).json({ error: 'Document not found' });
+                    }
+
+                    const [url, metadata] = documents[fileIndex];
+                    const filename = this.extractFilename(url);
+
+                    // If file was already downloaded to output directory, serve it
+                    if (metadata.filePath && await fs.pathExists(metadata.filePath)) {
+                        res.download(metadata.filePath, filename);
+                    } else {
+                        // Download file directly from source URL
+                        const axios = require('axios');
+                        const response = await axios.get(url, {
+                            responseType: 'stream',
+                            timeout: 30000,
+                            headers: {
+                                'User-Agent': crawl.config.userAgent || 'Sponge-Crawler/1.0.0'
+                            }
+                        });
+
+                        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+                        res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+                        
+                        if (response.headers['content-length']) {
+                            res.setHeader('Content-Length', response.headers['content-length']);
+                        }
+
+                        response.data.pipe(res);
+                    }
                 }
 
             } catch (error) {
@@ -493,71 +586,112 @@ class SpongeWebServer {
                     return res.status(404).json({ error: 'Crawl not found' });
                 }
 
-                if (!crawl.crawler || !crawl.crawler.foundDocuments) {
-                    return res.status(404).json({ error: 'No documents found' });
-                }
-
-                const documents = Array.from(crawl.crawler.foundDocuments.entries());
-                if (documents.length === 0) {
-                    return res.status(404).json({ error: 'No documents to download' });
-                }
-
                 // Create a ZIP file containing all found documents
                 const archiver = require('archiver');
-                const axios = require('axios');
                 const archive = archiver('zip', { zlib: { level: 9 } });
                 
                 res.attachment(`sponge-documents-${crawlId}.zip`);
                 archive.pipe(res);
 
-                // Add each document to the archive
-                for (let i = 0; i < documents.length; i++) {
-                    const [url, metadata] = documents[i];
-                    const filename = this.extractFilename(url);
+                // Handle restored/detected crawls
+                if (crawl.restored || crawl.detected) {
+                    const outputDir = crawl.config.outputDir || './downloads';
                     
-                    try {
-                        if (metadata.filePath && await fs.pathExists(metadata.filePath)) {
-                            // Add file from disk if it exists
-                            archive.file(metadata.filePath, { name: filename });
-                        } else {
-                            // Download file directly and add to archive
-                            const response = await axios.get(url, {
-                                responseType: 'stream',
-                                timeout: 30000,
-                                headers: {
-                                    'User-Agent': crawl.config.userAgent || 'Sponge-Crawler/1.0.0'
-                                }
-                            });
+                    if (await fs.pathExists(outputDir)) {
+                        const files = await fs.readdir(outputDir);
+                        let documentCount = 0;
+                        
+                        for (const file of files) {
+                            const filePath = path.join(outputDir, file);
+                            const stats = await fs.stat(filePath);
                             
-                            archive.append(response.data, { name: filename });
+                            // Only include actual document files (not metadata files)
+                            if (stats.isFile() && !file.startsWith('sponge-') && !file.startsWith('www_')) {
+                                try {
+                                    archive.file(filePath, { name: file });
+                                    documentCount++;
+                                } catch (error) {
+                                    this.logger.error(`Error adding ${file} to ZIP:`, error);
+                                }
+                            }
                         }
-                    } catch (error) {
-                        this.logger.error(`Error adding ${filename} to ZIP:`, error);
-                        // Continue with other files even if one fails
+                        
+                        if (documentCount === 0) {
+                            return res.status(404).json({ error: 'No documents to download' });
+                        }
+                        
+                        // Add metadata file
+                        const metadata = {
+                            crawlId,
+                            crawlUrl: crawl.config.startUrl,
+                            crawlTime: crawl.startTime,
+                            documentsCount: documentCount,
+                            restored: true
+                        };
+                        
+                        archive.append(JSON.stringify(metadata, null, 2), { name: 'crawl-metadata.json' });
                     }
-                }
+                } else {
+                    // Handle active crawls
+                    if (!crawl.crawler || !crawl.crawler.foundDocuments) {
+                        return res.status(404).json({ error: 'No documents found' });
+                    }
 
-                // Add metadata file
-                const metadata = {
-                    crawlId,
-                    crawlUrl: crawl.config.startUrl,
-                    crawlTime: crawl.startTime,
-                    documentsCount: documents.length,
-                    documents: documents.map(([url, meta], index) => ({
-                        index,
-                        url,
-                        filename: this.extractFilename(url),
-                        sourceUrl: meta.sourceUrl || url,
-                        depth: meta.depth || 0
-                    }))
-                };
-                
-                archive.append(JSON.stringify(metadata, null, 2), { name: 'crawl-metadata.json' });
-                
-                // Clean up directory after successful download
-                archive.on('end', () => {
-                    this.cleanupCrawlDirectory(crawlId, crawl.config.outputDir);
-                });
+                    const documents = Array.from(crawl.crawler.foundDocuments.entries());
+                    if (documents.length === 0) {
+                        return res.status(404).json({ error: 'No documents to download' });
+                    }
+
+                    // Add each document to the archive
+                    for (let i = 0; i < documents.length; i++) {
+                        const [url, metadata] = documents[i];
+                        const filename = this.extractFilename(url);
+                        
+                        try {
+                            if (metadata.filePath && await fs.pathExists(metadata.filePath)) {
+                                // Add file from disk if it exists
+                                archive.file(metadata.filePath, { name: filename });
+                            } else {
+                                // Download file directly and add to archive
+                                const axios = require('axios');
+                                const response = await axios.get(url, {
+                                    responseType: 'stream',
+                                    timeout: 30000,
+                                    headers: {
+                                        'User-Agent': crawl.config.userAgent || 'Sponge-Crawler/1.0.0'
+                                    }
+                                });
+                                
+                                archive.append(response.data, { name: filename });
+                            }
+                        } catch (error) {
+                            this.logger.error(`Error adding ${filename} to ZIP:`, error);
+                            // Continue with other files even if one fails
+                        }
+                    }
+
+                    // Add metadata file
+                    const metadata = {
+                        crawlId,
+                        crawlUrl: crawl.config.startUrl,
+                        crawlTime: crawl.startTime,
+                        documentsCount: documents.length,
+                        documents: documents.map(([url, meta], index) => ({
+                            index,
+                            url,
+                            filename: this.extractFilename(url),
+                            sourceUrl: meta.sourceUrl || url,
+                            depth: meta.depth || 0
+                        }))
+                    };
+                    
+                    archive.append(JSON.stringify(metadata, null, 2), { name: 'crawl-metadata.json' });
+                    
+                    // Clean up directory after successful download (only for new crawls)
+                    archive.on('end', () => {
+                        this.cleanupCrawlDirectory(crawlId, crawl.config.outputDir);
+                    });
+                }
                 
                 archive.finalize();
 
@@ -905,6 +1039,127 @@ class SpongeWebServer {
         }, 30 * 60 * 1000); // Every 30 minutes
     }
 
+    /**
+     * Load crawl registry from disk and restore active crawls
+     */
+    async loadCrawlRegistry() {
+        try {
+            if (await fs.pathExists(this.crawlRegistryPath)) {
+                const registry = await fs.readJson(this.crawlRegistryPath);
+                this.logger.info(`📁 Loading ${Object.keys(registry.crawls || {}).length} crawls from registry`);
+                
+                for (const [crawlId, crawlData] of Object.entries(registry.crawls || {})) {
+                    // Restore completed crawls to activeCrawls for access
+                    this.activeCrawls.set(crawlId, {
+                        ...crawlData,
+                        restored: true // Mark as restored from registry
+                    });
+                }
+                
+                this.logger.info(`✅ Restored ${this.activeCrawls.size} crawls from registry`);
+            } else {
+                // First time - detect existing crawls in downloads directory
+                await this.detectExistingCrawls();
+            }
+        } catch (error) {
+            this.logger.error('Failed to load crawl registry:', error);
+        }
+    }
+
+    /**
+     * Save crawl registry to disk
+     */
+    async saveCrawlRegistry() {
+        try {
+            const registry = {
+                version: '1.0.0',
+                lastUpdated: new Date().toISOString(),
+                crawls: {}
+            };
+
+            // Save all crawls to registry
+            for (const [crawlId, crawlData] of this.activeCrawls.entries()) {
+                registry.crawls[crawlId] = {
+                    id: crawlId,
+                    status: crawlData.status,
+                    startTime: crawlData.startTime,
+                    endTime: crawlData.endTime,
+                    config: crawlData.config,
+                    stats: crawlData.finalStats || crawlData.stats,
+                    restored: crawlData.restored || false
+                };
+            }
+
+            await fs.writeJson(this.crawlRegistryPath, registry, { spaces: 2 });
+            this.logger.debug(`💾 Saved ${Object.keys(registry.crawls).length} crawls to registry`);
+        } catch (error) {
+            this.logger.error('Failed to save crawl registry:', error);
+        }
+    }
+
+    /**
+     * Detect existing crawls from downloads directory
+     */
+    async detectExistingCrawls() {
+        try {
+            this.logger.info('🔍 Detecting existing crawls in downloads directory...');
+            
+            const downloadsDir = './downloads';
+            if (!await fs.pathExists(downloadsDir)) {
+                return;
+            }
+
+            // Look for sponge-metadata.json and sponge-summary.json files
+            const metadataFile = path.join(downloadsDir, 'sponge-metadata.json');
+            const summaryFile = path.join(downloadsDir, 'sponge-summary.json');
+            
+            if (await fs.pathExists(metadataFile) && await fs.pathExists(summaryFile)) {
+                const metadata = await fs.readJson(metadataFile);
+                const summary = await fs.readJson(summaryFile);
+                
+                const crawlId = metadata.metadata?.crawlId || summary.crawlId || `detected-${Date.now()}`;
+                
+                // Create crawl entry from existing data
+                const crawlData = {
+                    id: crawlId,
+                    status: 'completed',
+                    startTime: new Date(metadata.metadata?.crawlTime || summary.completedAt),
+                    endTime: new Date(summary.completedAt),
+                    config: {
+                        startUrl: metadata.metadata?.startUrl || summary.startUrl,
+                        outputDir: downloadsDir,
+                        ...metadata.metadata?.config,
+                        ...summary.configuration
+                    },
+                    stats: {
+                        pagesVisited: summary.statistics?.pagesVisited || 0,
+                        documentsFound: summary.statistics?.documentsFound || 0,
+                        documentsDownloaded: summary.statistics?.documentsDownloaded || 0,
+                        errors: summary.statistics?.errors || 0,
+                        totalErrors: summary.statistics?.errors || 0,
+                    },
+                    finalStats: {
+                        pagesVisited: summary.statistics?.pagesVisited || 0,
+                        documentsFound: summary.statistics?.documentsFound || 0,
+                        documentsDownloaded: summary.statistics?.documentsDownloaded || 0,
+                        errors: summary.statistics?.errors || 0,
+                        totalErrors: summary.statistics?.errors || 0,
+                    },
+                    restored: true,
+                    detected: true
+                };
+
+                this.activeCrawls.set(crawlId, crawlData);
+                this.logger.info(`🎯 Detected existing crawl: ${crawlId} (${crawlData.stats.documentsFound} documents)`);
+                
+                // Save to registry
+                await this.saveCrawlRegistry();
+            }
+        } catch (error) {
+            this.logger.error('Failed to detect existing crawls:', error);
+        }
+    }
+
     generateCrawlId() {
         return `crawl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
@@ -935,6 +1190,19 @@ class SpongeWebServer {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    getContentType(extension) {
+        const contentTypes = {
+            'pdf': 'application/pdf',
+            'doc': 'application/msword',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls': 'application/vnd.ms-excel',
+            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'txt': 'text/plain',
+            'md': 'text/markdown'
+        };
+        return contentTypes[extension] || 'application/octet-stream';
     }
 
     /**
@@ -969,7 +1237,7 @@ class SpongeWebServer {
 
     start() {
         return new Promise((resolve, reject) => {
-            this.server = this.app.listen(this.port, '0.0.0.0', () => {
+            this.server = this.app.listen(this.port, '127.0.0.1', () => {
                 this.logger.info(`🧽 Sponge Web Interface running on http://127.0.0.1:${this.port}`);
                 this.logger.info(`📊 API endpoints available at http://127.0.0.1:${this.port}/api`);
                 resolve(this.server);
@@ -1030,6 +1298,21 @@ if (require.main === module) {
         console.log('SIGINT received, shutting down gracefully');
         await server.stop();
         process.exit(0);
+    });
+
+    // Handle uncaught exceptions and unhandled rejections
+    process.on('uncaughtException', (error) => {
+        console.error('Uncaught Exception:', error);
+        console.error('Stack trace:', error.stack);
+        // Don't exit immediately - try to continue running
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+        if (reason && reason.stack) {
+            console.error('Stack trace:', reason.stack);
+        }
+        // Don't exit - log and continue
     });
 }
 

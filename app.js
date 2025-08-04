@@ -2,6 +2,8 @@
 
 let currentCrawlId = null;
 let statusCheckInterval = null;
+let serverHealthCheckInterval = null;
+let isServerDown = false;
 
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -15,6 +17,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup automatic page estimation when URL is entered
     setupAutoEstimation();
+    
+    // Start server health monitoring
+    startServerHealthCheck();
     
     
 });
@@ -169,7 +174,7 @@ async function startCrawl() {
     try {
         displayMessage('Starting crawl...', 'info');
         
-        const response = await fetch('/api/crawl/start', {
+        const response = await fetchWithRetry('/api/crawl/start', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -314,7 +319,7 @@ function displayCrawlStatus(status) {
                 <span class="status-text">${status.status.toUpperCase()}</span>
                 ${duration ? `<span class="status-duration">${duration}</span>` : ''}
                 ${status.status === 'running' ? `
-                    <button class="abort-btn" onclick="abortCrawl('${status.crawlId}')" title="Stop crawling">
+                    <button class="btn-danger" onclick="abortCrawl('${status.crawlId}')" title="Stop crawling">
                         ⏹️ Abort
                     </button>
                 ` : ''}
@@ -402,10 +407,10 @@ function displayCrawlStatus(status) {
                     </div>
                 </div>
                 <div class="download-actions">
-                    <button class="download-btn" onclick="downloadResults('${status.crawlId}')">
+                    <button class="btn-success" onclick="downloadResults('${status.crawlId}')">
                         📥 Download All Results
                     </button>
-                    <button class="download-btn btn-secondary" onclick="downloadPageContent('${status.crawlId}')">
+                    <button class="btn-secondary" onclick="downloadPageContent('${status.crawlId}')">
                         📄 Download Page Content
                     </button>
                 </div>
@@ -472,16 +477,16 @@ function displayDownloadInterface(crawlId, data) {
             <div class="download-header">
                 <h3>📁 Found ${data.totalDocuments} Documents</h3>
                 <div class="download-actions">
-                    <button class="download-btn" onclick="downloadAllAsZip('${crawlId}')">
+                    <button class="btn-success" onclick="downloadAllAsZip('${crawlId}')">
                         📦 Download All as ZIP
                     </button>
-                    <button class="download-btn btn-secondary" onclick="startAutomaticDownload('${crawlId}')">
+                    <button class="btn-secondary" onclick="startAutomaticDownload('${crawlId}')">
                         🚀 Individual Downloads
                     </button>
-                    <button class="download-btn btn-secondary" onclick="selectAllFiles(true)">
+                    <button class="btn-secondary" onclick="selectAllFiles(true)">
                         ✅ Select All
                     </button>
-                    <button class="download-btn btn-secondary" onclick="selectAllFiles(false)">
+                    <button class="btn-secondary" onclick="selectAllFiles(false)">
                         ❌ Deselect All
                     </button>
                 </div>
@@ -491,7 +496,7 @@ function displayDownloadInterface(crawlId, data) {
                 <div class="progress-header">
                     <span id="downloadProgressText">Ready to start...</span>
                     <div class="download-controls">
-                        <button id="pauseBtn" class="btn-small" onclick="pauseDownload()">⏸️ Pause</button>
+                        <button id="pauseBtn" class="btn-small btn-secondary" onclick="pauseDownload()">⏸️ Pause</button>
                         <button id="stopBtn" class="btn-small btn-danger" onclick="stopDownload()">⏹️ Stop</button>
                     </div>
                 </div>
@@ -555,7 +560,7 @@ function selectAllFiles(select) {
 
 // Update download button text with selected count
 function updateDownloadButtonText() {
-    const downloadBtn = document.querySelector('.download-interface .download-btn');
+    const downloadBtn = document.querySelector('.download-interface .btn-success');
     if (downloadBtn) {
         const selectedCount = downloadState.selectedFiles.size;
         downloadBtn.textContent = `🚀 Start Automatic Downloads (${selectedCount} files)`;
@@ -772,7 +777,7 @@ async function downloadAllAsZip(crawlId) {
 
 // Legacy download function (keep for compatibility)
 async function downloadResults(crawlId) {
-    await showDownloadInterface(crawlId);
+    await downloadAllAsZip(crawlId);
 }
 
 // Download page content files as ZIP
@@ -1148,14 +1153,8 @@ function setupAutoEstimation() {
                 clearTimeout(estimationTimeout);
             }
             
-            // Only estimate if URL looks valid and is not empty
-            if (url && isValidUrl(url)) {
-                // Debounce the estimation call by 1 second to avoid rapid requests
-                estimationTimeout = setTimeout(() => {
-                    console.log('🔍 Auto-triggering page estimation for:', url);
-                    estimatePages();
-                }, 1000);
-            } else {
+            // Disable auto-estimation to prevent interference - user can click the button manually
+            if (!url || !isValidUrl(url)) {
                 // Hide estimation results if URL becomes invalid
                 const estimationResults = document.getElementById('estimationResults');
                 if (estimationResults) {
@@ -1190,7 +1189,17 @@ async function estimatePages() {
         return;
     }
     
-    const estimateButton = document.querySelector('.estimate-button');
+    // Find estimation button with multiple selectors to handle class changes
+    const estimateButton = document.querySelector('button.btn-info') || 
+                          document.querySelector('.estimate-button') ||
+                          document.querySelector('button[onclick*="estimatePages"]') ||
+                          document.querySelector('#pageEstimationSection button');
+    
+    if (!estimateButton) {
+        console.error('Estimate button not found with any selector');
+        console.log('Available buttons:', document.querySelectorAll('button'));
+        return;
+    }
     const originalText = estimateButton.textContent;
     
     try {
@@ -1198,7 +1207,7 @@ async function estimatePages() {
         estimateButton.textContent = '🔍 Estimating...';
         estimateButton.disabled = true;
         
-        const response = await fetch('/api/crawl/estimate', {
+        const response = await fetchWithRetry('/api/crawl/estimate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1416,6 +1425,189 @@ function showNotification(message, type = 'info', duration = 3000) {
             }
         }, 300);
     }, duration);
+}
+
+// Connection recovery and retry mechanism
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+    let attempt = 0;
+    
+    while (attempt < maxRetries) {
+        try {
+            const response = await fetch(url, options);
+            
+            // If we get here, server is responding
+            if (isServerDown) {
+                isServerDown = false;
+                hideServerDownMessage();
+                showNotification('Server connection restored!', 'success');
+            }
+            
+            return response;
+            
+        } catch (error) {
+            attempt++;
+            
+            // Only retry on network-related errors
+            if (error.message.includes('fetch') || error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+                console.log(`Connection attempt ${attempt} failed:`, error.message);
+                
+                if (attempt === 1) {
+                    // First failure - show server down message
+                    isServerDown = true;
+                    showServerDownMessage();
+                }
+                
+                if (attempt < maxRetries) {
+                    // Wait before retry with exponential backoff
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 3000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+            }
+            
+            throw error;
+        }
+    }
+}
+
+// Server health check
+function startServerHealthCheck() {
+    if (serverHealthCheckInterval) {
+        clearInterval(serverHealthCheckInterval);
+    }
+    
+    serverHealthCheckInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/health', {
+                method: 'GET'
+            });
+            
+            if (response.ok && isServerDown) {
+                isServerDown = false;
+                hideServerDownMessage();
+                showNotification('Server connection restored!', 'success');
+            }
+        } catch (error) {
+            if (!isServerDown) {
+                isServerDown = true;
+                showServerDownMessage();
+            }
+        }
+    }, 10000); // Check every 10 seconds
+}
+
+// Show server down message
+function showServerDownMessage() {
+    let serverDownDiv = document.getElementById('serverDownMessage');
+    
+    if (!serverDownDiv) {
+        serverDownDiv = document.createElement('div');
+        serverDownDiv.id = 'serverDownMessage';
+        serverDownDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff4444;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-weight: bold;
+            text-align: center;
+        `;
+        serverDownDiv.innerHTML = `
+            ⚠️ Server Connection Lost<br>
+            <small>Attempting to reconnect...</small>
+        `;
+        document.body.appendChild(serverDownDiv);
+    }
+    
+    serverDownDiv.style.display = 'block';
+}
+
+// Hide server down message
+function hideServerDownMessage() {
+    const serverDownDiv = document.getElementById('serverDownMessage');
+    if (serverDownDiv) {
+        serverDownDiv.style.display = 'none';
+    }
+}
+
+
+// Previous crawls management
+async function showPreviousCrawls() {
+    const section = document.getElementById('previousCrawls');
+    section.style.display = 'block';
+    section.scrollIntoView({ behavior: 'smooth' });
+    await refreshCrawlsList();
+}
+
+function hidePreviousCrawls() {
+    document.getElementById('previousCrawls').style.display = 'none';
+}
+
+async function refreshCrawlsList() {
+    const crawlsList = document.getElementById('crawlsList');
+    crawlsList.innerHTML = '<div class="loading">Loading previous crawls...</div>';
+    
+    try {
+        const response = await fetchWithRetry('/api/crawls');
+        if (!response.ok) {
+            throw new Error('Failed to fetch crawls');
+        }
+        
+        const data = await response.json();
+        displayCrawlsList(data.crawls);
+    } catch (error) {
+        console.error('Error loading crawls:', error);
+        crawlsList.innerHTML = '<div class="error">Failed to load previous crawls</div>';
+    }
+}
+
+function displayCrawlsList(crawls) {
+    const crawlsList = document.getElementById('crawlsList');
+    
+    if (!crawls || crawls.length === 0) {
+        crawlsList.innerHTML = '<div class="no-crawls">No previous crawls found</div>';
+        return;
+    }
+
+    const crawlsHTML = crawls.map(crawl => {
+        const startDate = new Date(crawl.startTime).toLocaleString();
+        const statusIcon = crawl.status === 'completed' ? '✅' : 
+                          crawl.status === 'failed' ? '❌' : 
+                          crawl.status === 'aborted' ? '⏹️' : '🔄';
+        const documentsCount = crawl.stats?.documentsFound || 0;
+        const pagesCount = crawl.stats?.pagesVisited || 0;
+        
+        return `
+            <div class="crawl-item ${crawl.restored ? 'restored' : ''}">
+                <div class="crawl-header">
+                    <div class="crawl-status">${statusIcon} ${crawl.status.toUpperCase()}</div>
+                    <div class="crawl-date">${startDate}</div>
+                    ${crawl.restored ? '<div class="restored-badge">📁 Restored</div>' : ''}
+                </div>
+                <div class="crawl-details">
+                    <div class="crawl-url">${crawl.url}</div>
+                    <div class="crawl-stats">
+                        📄 ${pagesCount} pages • 📎 ${documentsCount} documents
+                    </div>
+                </div>
+                <div class="crawl-actions">
+                    <button class="btn-small btn-success" onclick="downloadResults('${crawl.crawlId}')">
+                        💾 Download Results
+                    </button>
+                    <button class="btn-small btn-secondary" onclick="showDownloadInterface('${crawl.crawlId}')">
+                        📋 View Documents
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    crawlsList.innerHTML = crawlsHTML;
 }
 
 console.log('🧽 Sponge Crawler web interface scripts loaded');
